@@ -20,7 +20,7 @@ const int ATTRIBUTE_NUM = 617;
 const int THREAD_NUM = 4;
 const int EVERY_TREE_ATTRIBUTE_NUM = 24;
 const int EVERY_TREE_SAMPLE_NUM = 6283 * 0.6; // MAX 6238
-const int TREE_NUM = 25; // Every Thread
+const int TREE_NUM = 100; // Every Thread
 
 struct Sample {
     Sample(char* line, bool isTest) {
@@ -48,7 +48,7 @@ struct Sample {
 
 vector<Sample> allSamples;
 vector<Sample> allTests;
-vector<int> results[TREE_NUM * THREAD_NUM];
+vector<int> results[TREE_NUM];
 
 class TreeNode {
 public:
@@ -229,9 +229,9 @@ vector<Sample> readDataFromFile(char* fileName, bool isTest) {
 void writeToFile(const vector<int> results[]) {
     ofstream fout("result.csv");
     const int ids = allTests.size();
-    int counter[ids][LABEL_NUM], totalTree = TREE_NUM * THREAD_NUM;
+    int counter[ids][LABEL_NUM];
     memset(counter, 0, sizeof(counter));
-    for (int i = 0; i < totalTree; i++) {
+    for (int i = 0; i < TREE_NUM; i++) {
         for (int j = 0; j < results[i].size(); j++) {
             counter[j][results[i][j]]++;
         }
@@ -294,29 +294,26 @@ void randomForestClassify() {
 }
 
 void* randomForestClassifyThread(void* index) {
-    int threadId = *(int*)index;
-    for (int i = 0; i < TREE_NUM; i++) {
-        vector<int> result;
-        set<int> attributes = getRandomAttributes();
-        vector<int> samples = getRandomSampleIndexs();
-        TreeNode* tree = buildDecisionTree(samples, attributes, samples);
-        for (int j = 0; j < allTests.size(); j++) {
-            result.push_back(findPath(tree, allTests[j]));
-        }
-        results[threadId * TREE_NUM + i] = result;
-        cout << threadId * TREE_NUM + i << endl;
-        tree->clear();
-        delete tree;
+    int number = *(int*)index;
+    vector<int> result;
+    set<int> attributes = getRandomAttributes();
+    vector<int> samples = getRandomSampleIndexs();
+    TreeNode* tree = buildDecisionTree(samples, attributes, samples);
+    for (int j = 0; j < allTests.size(); j++) {
+        result.push_back(findPath(tree, allTests[j]));
     }
+    cout << number << endl;
+    results[number] = result;
+    tree->clear();
+    delete tree;
 }
 
 void multiRandomForestClassify() {
-    pthread_t thread[THREAD_NUM];
-    for (int i = 0; i < THREAD_NUM; i++) {
-        int threadId = i;
-        int ret = pthread_create(&thread[i], NULL, randomForestClassifyThread, &threadId);
+    pthread_t thread[TREE_NUM];
+    for (int i = 0; i < TREE_NUM; i++) {
+        int ret = pthread_create(&thread[i], NULL, randomForestClassifyThread, &i);
     }
-    for (int i = 0; i < THREAD_NUM; i++) {
+    for (int i = 0; i < TREE_NUM; i++) {
         pthread_join(thread[i], NULL);
     }
 }
@@ -324,15 +321,14 @@ void multiRandomForestClassify() {
 void initializeData() {
     allSamples = readDataFromFile(TRAIN_FILE, false);
     allTests = readDataFromFile(TEST_FILE, true);
-    srand((unsigned)time(NULL));
 }
 
 int main() {
     clock_t start, finish;
     start = clock();
     initializeData();
-    multiRandomForestClassify();
-    // randomForestClassify();
+    // multiRandomForestClassify();
+    randomForestClassify();
     writeToFile(results);
     finish = clock();
     cout << (double)(finish - start) / CLOCKS_PER_SEC << "s" << endl;

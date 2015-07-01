@@ -4,6 +4,9 @@ import random
 
 from collections import Counter
 
+DEBUG = True
+FILE = open('gain.txt', 'w')
+
 class Sample:
     def __init__(self, input, attributes):
         attrs = input.strip().split(', ')
@@ -66,6 +69,10 @@ def buildDecisionTree(samples, attributes, parenSamples):
     if attributeValue:
         attributes.remove(attributeValue)
         leftSamples, rightSamples = splitSamples(samples, attributeValue, tree.critical)
+        global DEBUG
+        if DEBUG:
+            print len(leftSamples), len(rightSamples)
+            DEBUG = False
         tree.leftChild = buildDecisionTree(leftSamples, attributes, samples)
         tree.rightChild = buildDecisionTree(rightSamples, attributes, samples)
         attributes.append(attributeValue)
@@ -93,6 +100,7 @@ def getMaxImportant(attributes, samples):
             attributeValue = attr
             attributeEntropy = entropy
             attributeCritical = critical
+    FILE.write(str(attributeEntropy) + ' ' + attributeValue + ' ' + str(attributeCritical) + ' ' + str(len(samples)) + '\n')
     return attributeValue, attributeCritical, attributeEntropy
 
 def getImportantValue(samples, attribute):
@@ -103,7 +111,7 @@ def getImportantValue(samples, attribute):
 
 def getCriticalValues(samples, attribute):
     average = sum(map(lambda x: x.values[attribute], samples)) * 1.0 / len(samples)
-    yield samples[len(samples) / 2].values[attribute]
+    yield average
     # yield (average + samples[0].values[attribute]) / 2
     # yield (average + samples[-1].values[attribute]) / 2
     # for index in xrange(len(samples) - 1):
@@ -117,12 +125,11 @@ def getRemainderValues(samples, attribute, criticals):
     for item in samples:
         resultCounter[item.result] += 1
     samplesEntropy = getEntropyFromCounter(resultCounter, totalLength)
-    print samplesEntropy
     for critical in criticals:
         totalLarger, totalSmaller = 0, 0
         largerCounter, smallerCounter = Counter(), Counter()
         for item in samples:
-            if item.values[attribute] > critical:
+            if item.values[attribute] >= critical:
                 totalLarger += 1
                 largerCounter[item.result] += 1
             else:
@@ -182,8 +189,8 @@ if __name__ == '__main__':
     start = time.time()
     samples, attributes = getSamples()
     tests = getTests()
-    for index in xrange(100):
-        tempAttributes = getRandomAttributes(attributes)
+    for index in xrange(1):
+        tempAttributes = attributes
         tree = buildDecisionTree(samples, tempAttributes, samples)
         file = open('result/result' + str(index) + '.csv', 'w')
         file.write('id,label\n')
@@ -194,3 +201,4 @@ if __name__ == '__main__':
         print 'Complete %d tree' % index
     end = time.time()
     print end - start
+    FILE.close()
