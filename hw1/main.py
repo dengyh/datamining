@@ -11,7 +11,7 @@ def outputResult(result, fileName):
 
 if __name__ == '__main__':
     trainDataSet, trainResultSet = readTrainData('data/train_temp.csv')
-    coefficient = train(trainDataSet, trainResultSet, 0.01, 10000)
+    coefficient = train(trainDataSet, trainResultSet, 0.01, 300000)
     testDataSet = readTestData('data/test_temp.csv')
     result = test(testDataSet, coefficient)
     outputResult(result, 'data/result.csv')

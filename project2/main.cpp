@@ -9,6 +9,8 @@
 #include <set>
 #include <cmath>
 #include <ctime>
+#include <thread>
+#include <algorithm>
 
 using namespace std;
 
@@ -17,10 +19,11 @@ char TEST_FILE[] = "test.csv";
 
 const int LABEL_NUM = 27;
 const int ATTRIBUTE_NUM = 617;
-const int THREAD_NUM = 4;
-const int EVERY_TREE_ATTRIBUTE_NUM = 24;
-const int EVERY_TREE_SAMPLE_NUM = 6283 * 0.6; // MAX 6238
-const int TREE_NUM = 25; // Every Thread
+double ATTRIBUTE_RATE = 0.12;
+double SAMPLE_RATE = 0.6;
+int THREAD_NUM = 4;
+int TREE_NUM = 25;
+bool isMultiThread = true;
 
 struct Sample {
     Sample(char* line, bool isTest) {
@@ -48,7 +51,7 @@ struct Sample {
 
 vector<Sample> allSamples;
 vector<Sample> allTests;
-vector<int> results[TREE_NUM * THREAD_NUM];
+vector<int>* results;
 
 class TreeNode {
 public:
@@ -108,9 +111,14 @@ vector<double> getCriticalValues(const vector<int>& samples, const int& attribut
     for (int i = 0; i < samples.size(); i++) {
         total += allSamples[samples[i]].values[attribute];
     }
-    // criticals.push_back(allSamples[samples[samples.size() / 2]].values[attribute]);
-    // criticals.push_back(allSamples[samples[samples.size() / 4]].values[attribute]);
-    // criticals.push_back(allSamples[samples[samples.size() * 3 / 4]].values[attribute]);
+    // criticals.push_back(allSamples[samples[(samples.size() - 1) / 8]].values[attribute]);
+    // criticals.push_back(allSamples[samples[(samples.size() - 1) * 2 / 8]].values[attribute]);
+    // criticals.push_back(allSamples[samples[(samples.size() - 1) * 3 / 8]].values[attribute]);
+    // criticals.push_back(allSamples[samples[(samples.size() - 1) * 4 / 8]].values[attribute]);
+    // criticals.push_back(allSamples[samples[(samples.size() - 1) * 5 / 8]].values[attribute]);
+    // criticals.push_back(allSamples[samples[(samples.size() - 1) * 6 / 8]].values[attribute]);
+    // criticals.push_back(allSamples[samples[(samples.size() - 1) * 7 / 8]].values[attribute]);
+    // criticals.push_back(allSamples[samples[(samples.size() - 1) * 8 / 8]].values[attribute]);
     criticals.push_back(total / samples.size());
     return criticals;
 }
@@ -161,7 +169,7 @@ void getImportantValue(double& critical, double& entropy, vector<int> samples, i
 }
 
 void getMaxImportant(int& attribute, double& critical, const vector<int>& samples, const set<int>& attributes) {
-    double entropy = 0.0;
+    double entropy = -1;
     for (set<int>::iterator it = attributes.begin(); it != attributes.end(); it++) {
         double tempCritical = 0.0, tempEntropy = 0.0;
         getImportantValue(tempCritical, tempEntropy, samples, *it);
@@ -262,7 +270,8 @@ int findPath(TreeNode* tree, Sample& sample) {
 
 set<int> getRandomAttributes() {
     set<int> attributes;
-    while (attributes.size() != EVERY_TREE_ATTRIBUTE_NUM) {
+    int targetSize = ATTRIBUTE_NUM * ATTRIBUTE_RATE;
+    while (attributes.size() != targetSize) {
         attributes.insert(rand() % ATTRIBUTE_NUM);
     }
     return attributes;
@@ -271,7 +280,8 @@ set<int> getRandomAttributes() {
 vector<int> getRandomSampleIndexs() {
     vector<int> samples;
     int totalSampleSize = allSamples.size();
-    for (int i = 0; i < EVERY_TREE_SAMPLE_NUM; i++) {
+    int targetSize = SAMPLE_RATE * totalSampleSize;
+    for (int i = 0; i < targetSize; i++) {
         samples.push_back(rand() % totalSampleSize);
     }
     return samples;
@@ -286,15 +296,14 @@ void randomForestClassify() {
         for (int j = 0; j < allTests.size(); j++) {
             result.push_back(findPath(tree, allTests[j]));
         }
-        cout << "Run tree " << i << " finish" << endl;
         results[i] = result;
         tree->clear();
         delete tree;
     }
 }
 
-void* randomForestClassifyThread(void* index) {
-    int threadId = *(int*)index;
+void randomForestClassifyThread(int index) {
+    int threadId = index;
     for (int i = 0; i < TREE_NUM; i++) {
         vector<int> result;
         set<int> attributes = getRandomAttributes();
@@ -304,37 +313,45 @@ void* randomForestClassifyThread(void* index) {
             result.push_back(findPath(tree, allTests[j]));
         }
         results[threadId * TREE_NUM + i] = result;
-        cout << threadId * TREE_NUM + i << endl;
         tree->clear();
         delete tree;
     }
 }
 
 void multiRandomForestClassify() {
-    pthread_t thread[THREAD_NUM];
+    thread threads[TREE_NUM];
     for (int i = 0; i < THREAD_NUM; i++) {
-        int threadId = i;
-        int ret = pthread_create(&thread[i], NULL, randomForestClassifyThread, &threadId);
+        threads[i] = thread(randomForestClassifyThread, i);
     }
     for (int i = 0; i < THREAD_NUM; i++) {
-        pthread_join(thread[i], NULL);
+        threads[i].join();
     }
 }
 
-void initializeData() {
+void initializeData(int argc, char* argv[]) {
     allSamples = readDataFromFile(TRAIN_FILE, false);
     allTests = readDataFromFile(TEST_FILE, true);
     srand((unsigned)time(NULL));
+    if (argc > 0) {
+        THREAD_NUM = (int)atof(argv[1]);
+    }
+    if (argc > 1) {
+        TREE_NUM = (int)atof(argv[2]);
+    }
+    if (argc > 2) {
+        ATTRIBUTE_RATE = atof(argv[3]);
+    }
+    if (argc > 3) {
+        SAMPLE_RATE = atof(argv[4]);
+    }
+    results = new vector<int>[TREE_NUM * THREAD_NUM];
 }
 
-int main() {
-    clock_t start, finish;
-    start = clock();
-    initializeData();
+int main(int argc, char* argv[]) {
+    initializeData(argc, argv);
     multiRandomForestClassify();
     // randomForestClassify();
     writeToFile(results);
-    finish = clock();
-    cout << (double)(finish - start) / CLOCKS_PER_SEC << "s" << endl;
+    delete []results;
     return 0;
 }
